@@ -152,47 +152,45 @@ jobs:
 
       - name: Fix Xcode Capabilities (remove Game Center)
         run: |
-          PBXPROJ=$(find xcode-project -name "project.pbxproj" | head -1)
-          echo "Found pbxproj: $PBXPROJ"
-          echo "--- GameCenter content BEFORE ---"
-          grep -n "GameCenter\|GameKit\|game-center" "$PBXPROJ" || echo "(none in pbxproj)"
+          python3 << 'PYEOF'
+          import re, glob
 
-          # Use Python to robustly remove Game Center capability blocks
-          python3 - "$PBXPROJ" << 'PYEOF'
-          import re, sys
-          path = sys.argv[1]
-          with open(path, 'r') as f:
-              content = f.read()
-          # Remove SystemCapabilities GameCenter block (multi-line)
-          content = re.sub(r'com\.apple\.GameCenter\s*=\s*\{[^}]*\};', '', content)
-          # Remove any remaining GameCenter/GameKit lines
-          lines = content.split('\n')
-          lines = [l for l in lines if 'GameKit.framework' not in l and 'com.apple.GameCenter' not in l]
-          with open(path, 'w') as f:
-              f.write('\n'.join(lines))
-          print("Removed Game Center from pbxproj")
+          print("=" * 60)
+
+          # ---- 1. Clean pbxproj: remove Game Center capability & GameKit framework ----
+          # NOTE: keep UnityEngine.GameCenterModule*.cpp/.c (IL2CPP source, needed to compile)
+          for path in glob.glob('xcode-project/**/project.pbxproj', recursive=True):
+              print(f"[pbxproj] {path}")
+              with open(path, 'r') as f:
+                  content = f.read()
+              # Remove SystemCapabilities GameCenter block (multi-line)
+              content, n1 = re.subn(r'com\.apple\.GameCenter\s*=\s*\{[^}]*\};', '', content)
+              # Remove GameKit.framework linking lines only
+              lines = content.split('\n')
+              kept = [l for l in lines if 'GameKit.framework' not in l and 'com.apple.GameCenter' not in l]
+              n2 = len(lines) - len(kept)
+              content = '\n'.join(kept)
+              with open(path, 'w') as f:
+                  f.write(content)
+              print(f"  removed {n1} capability block(s), {n2} GameKit/capability line(s)")
+
+          # ---- 2. Clean entitlements files: remove game-center key/value ----
+          ent_files = glob.glob('xcode-project/**/*.entitlements', recursive=True)
+          print(f"[entitlements] found {len(ent_files)} file(s)")
+          for path in ent_files:
+              print(f"[entitlements] {path}")
+              with open(path, 'r') as f:
+                  content = f.read()
+              print("--- BEFORE ---")
+              print(content)
+              content = re.sub(r'\s*<key>com\.apple\.developer\.game-center</key>\s*<(true|false)\s*/>', '', content)
+              print("--- AFTER ---")
+              print(content)
+              with open(path, 'w') as f:
+                  f.write(content)
+
+          print("=" * 60)
           PYEOF
-
-          # Clean entitlements files
-          for ENT in $(find xcode-project -name "*.entitlements"); do
-            echo "--- Entitlements: $ENT ---"
-            cat "$ENT"
-            python3 - "$ENT" << 'PYEOF'
-            import re, sys
-            path = sys.argv[1]
-            with open(path, 'r') as f:
-                content = f.read()
-            # Remove game-center key/value pairs
-            content = re.sub(r'\s*<key>com\.apple\.developer\.game-center</key>\s*<true/>', '', content)
-            content = re.sub(r'\s*<key>com\.apple\.developer\.game-center</key>\s*<false/>', '', content)
-            with open(path, 'w') as f:
-                f.write(content)
-            print("Cleaned entitlements")
-            PYEOF
-          done
-
-          echo "--- GameCenter content AFTER ---"
-          grep -n "GameCenter\|GameKit\|game-center" "$PBXPROJ" || echo "(none - clean!)"
 
       - name: Setup Code Signing
         env:
