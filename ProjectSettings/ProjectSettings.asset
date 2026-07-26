@@ -64,3 +64,4 @@ PlayerSettings:
   xboxOneLoggingLevel: 1
   companyName: DoraccoonGames
   bundleVersion: 1.0.0
+  activeInputHandler: 2

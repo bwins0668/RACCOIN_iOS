@@ -34,6 +34,12 @@ namespace Raccoin.CoinPusher
 
         private IEnumerator IE_Init()
         {
+            // 初始化所有子系统 (推板/投币口/机器/计分板)
+            if (_pusherController != null) _pusherController.Initialize();
+            if (_coinEntry != null) _coinEntry.Initialize();
+            if (_machineController != null) _machineController.Initialize();
+            if (_scoreBoard != null) _scoreBoard.Initialize();
+
             yield return StartCoroutine(IE_InitDetecter());
             Debug.Log("[CoinPusherManager] Initialized.");
         }
