@@ -189,29 +189,6 @@ jobs:
               with open(path, 'w') as f:
                   f.write(content)
 
-          # ---- 3. Set provisioning profile ONLY on Unity-iPhone app target ----
-          # (a command-line PROVISIONING_PROFILE_SPECIFIER would wrongly apply to UnityFramework too)
-          PROFILE = "LpqS"
-          for path in glob.glob('xcode-project/**/project.pbxproj', recursive=True):
-              with open(path, 'r') as f:
-                  c = f.read()
-              # Unity-iPhone native target -> its buildConfigurationList id
-              tm = re.search(r'\w+\s*/\*\s*Unity-iPhone\s*\*/\s*=\s*\{\s*isa\s*=\s*PBXNativeTarget;(.*?)\};', c, re.DOTALL)
-              if not tm:
-                  print("[sign] Unity-iPhone target NOT found")
-                  continue
-              list_id = re.search(r'buildConfigurationList\s*=\s*(\w+)', tm.group(1)).group(1)
-              # that XCConfigurationList -> build configuration ids
-              clm = re.search(list_id + r'\s*/\*[^=]*=\s*\{\s*isa\s*=\s*XCConfigurationList;\s*buildConfigurations\s*=\s*\((.*?)\);', c, re.DOTALL)
-              config_ids = re.findall(r'(\w+)\s*/\*', clm.group(1))
-              print(f"[sign] Unity-iPhone build configs: {config_ids}")
-              for cid in config_ids:
-                  pat = re.compile(r'(' + cid + r'\s*/\*[^=]*=\s*\{\s*isa\s*=\s*XCBuildConfiguration;\s*buildSettings\s*=\s*\{)', re.DOTALL)
-                  c, n = pat.subn(r'\1\n\t\t\t\tPROVISIONING_PROFILE_SPECIFIER = "' + PROFILE + '";', c)
-                  print(f"[sign] config {cid}: injected {n}")
-              with open(path, 'w') as f:
-                  f.write(c)
-
           print("=" * 60)
           PYEOF
 
@@ -282,6 +259,7 @@ jobs:
             DEVELOPMENT_TEAM=${{ env.TEAM_ID }} \
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="Apple Distribution" \
+            PROVISIONING_PROFILE_SPECIFIER_APP=LpqS \
             archive
 
           xcodebuild -exportArchive \
