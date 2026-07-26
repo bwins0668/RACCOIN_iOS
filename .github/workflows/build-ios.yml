@@ -181,29 +181,29 @@ jobs:
           cd xcode-project
 
           # Create ExportOptions.plist
-          cat > ExportOptions.plist << 'EOF'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>method</key>
-  <string>development</string>
-  <key>teamID</key>
-  <string>WB5752S5M6</string>
-  <key>signingStyle</key>
-  <string>manual</string>
-  <key>stripSwiftSymbols</key>
-  <true/>
-  <key>uploadSymbols</key>
-  <false/>
-  <key>provisioningProfiles</key>
-  <dict>
-    <key>com.doraccoon.raccoin</key>
-    <string>RACCOIN Dev</string>
-  </dict>
-</dict>
-</plist>
-EOF
+          cat > ExportOptions.plist <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>development</string>
+            <key>teamID</key>
+            <string>WB5752S5M6</string>
+            <key>signingStyle</key>
+            <string>manual</string>
+            <key>stripSwiftSymbols</key>
+            <true/>
+            <key>uploadSymbols</key>
+            <false/>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>com.doraccoon.raccoin</key>
+              <string>RACCOIN Dev</string>
+            </dict>
+          </dict>
+          </plist>
+          EOF
 
           # Build and export
           xcodebuild -project Unity-iPhone.xcodeproj \
