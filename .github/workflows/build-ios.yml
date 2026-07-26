@@ -53,6 +53,9 @@ jobs:
     name: Run EditMode Tests
     runs-on: ubuntu-latest
     continue-on-error: true
+    permissions:
+      contents: read
+      checks: write
     if: github.event_name != 'workflow_dispatch' || github.event.inputs.build_type != 'activate'
     steps:
       - name: Checkout repository
