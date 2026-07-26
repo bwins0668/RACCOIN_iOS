@@ -1,0 +1,250 @@
+name: RACCOIN iOS Build
+
+on:
+  push:
+    branches: [ main, master ]
+    paths-ignore:
+      - '**.md'
+      - '.gitignore'
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: 'Build type'
+        required: true
+        default: 'development'
+        type: choice
+        options:
+          - development
+          - release
+
+env:
+  UNITY_VERSION: "6000.3.0f1"
+  PROJECT_NAME: "RACCOIN"
+  BUNDLE_ID: "com.doraccoon.raccoin"
+  TEAM_ID: "WB5752S5M6"
+
+jobs:
+  # ============================================
+  # Job 1: Unity 激活 (首次运行需要)
+  # ============================================
+  activation:
+    name: Request Unity Activation File
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.build_type == 'activate'
+    steps:
+      - name: Request manual activation file
+        id: getManualLicenseFile
+        uses: game-ci/unity-request-activation-file@v2
+        with:
+          unityVersion: ${{ env.UNITY_VERSION }}
+      - name: Expose activation file
+        uses: actions/upload-artifact@v4
+        with:
+          name: Manual Activation File
+          path: ${{ steps.getManualLicenseFile.outputs.filePath }}
+
+  # ============================================
+  # Job 2: 自动化测试
+  # ============================================
+  test:
+    name: Run EditMode Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          lfs: true
+
+      - name: Cache Unity Library
+        uses: actions/cache@v4
+        with:
+          path: Library
+          key: Library-RACCOIN-Test-${{ hashFiles('Assets/**', 'Packages/**', 'ProjectSettings/**') }}
+          restore-keys: |
+            Library-RACCOIN-Test-
+            Library-
+
+      - name: Run Tests
+        uses: game-ci/unity-test-runner@v4
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        with:
+          projectPath: .
+          unityVersion: ${{ env.UNITY_VERSION }}
+          testMode: EditMode
+          artifactsPath: test-results
+          githubToken: ${{ secrets.GITHUB_TOKEN }}
+          checkName: EditMode Tests
+
+      - name: Upload Test Results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Test Results
+          path: test-results
+          retention-days: 7
+
+  # ============================================
+  # Job 3: 构建 iOS Xcode 项目
+  # ============================================
+  build-ios:
+    name: Build iOS Xcode Project
+    runs-on: ubuntu-latest
+    needs: test
+    strategy:
+      fail-fast: false
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          lfs: true
+
+      - name: Cache Unity Library
+        uses: actions/cache@v4
+        with:
+          path: Library
+          key: Library-RACCOIN-iOS-${{ hashFiles('Assets/**', 'Packages/**', 'ProjectSettings/**') }}
+          restore-keys: |
+            Library-RACCOIN-iOS-
+            Library-
+
+      - name: Build iOS Xcode Project
+        uses: game-ci/unity-builder@v4
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+          UNITY_SERIAL: ${{ secrets.UNITY_SERIAL }}
+        with:
+          projectPath: .
+          unityVersion: ${{ env.UNITY_VERSION }}
+          targetPlatform: iOS
+          buildMethod: BuildScript.BuildIOS
+          customParameters: >-
+            -buildTarget iOS
+            -development ${{ github.event.inputs.build_type == 'development' && 'true' || 'false' }}
+
+      - name: Upload Xcode Project
+        uses: actions/upload-artifact@v4
+        with:
+          name: RACCOIN-iOS-Xcode
+          path: build/iOS/
+          retention-days: 7
+
+  # ============================================
+  # Job 3: 签名并导出 IPA (需要 macOS)
+  # ============================================
+  sign-and-export:
+    name: Sign & Export IPA
+    runs-on: macos-latest
+    needs: build-ios
+    steps:
+      - name: Download Xcode Project
+        uses: actions/download-artifact@v4
+        with:
+          name: RACCOIN-iOS-Xcode
+          path: xcode-project
+
+      - name: Setup Code Signing
+        env:
+          P12_BASE64: ${{ secrets.IOS_P12_BASE64 }}
+          P12_PASSWORD: ${{ secrets.IOS_P12_PASSWORD }}
+          PROVISION_PROFILE_BASE64: ${{ secrets.IOS_PROVISION_PROFILE_BASE64 }}
+        run: |
+          # Create variables
+          PP_PATH=$RUNNER_TEMP/build_pp.mobileprovision
+          CERTIFICATE_PATH=$RUNNER_TEMP/build_certificate.p12
+          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+
+          # Import certificate and provisioning profile from secrets
+          echo -n "$P12_BASE64" | base64 --decode -o $CERTIFICATE_PATH
+          echo -n "$PROVISION_PROFILE_BASE64" | base64 --decode -o $PP_PATH
+
+          # Create temporary keychain
+          security create-keychain -p "" $KEYCHAIN_PATH
+          security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
+          security unlock-keychain -p "" $KEYCHAIN_PATH
+
+          # Import certificate to keychain
+          security import $CERTIFICATE_PATH -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
+          security set-key-partition-list -S apple-tool:,apple: -k "" $KEYCHAIN_PATH
+          security list-keychain -d user -s $KEYCHAIN_PATH
+
+          # Apply provisioning profile
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          cp $PP_PATH ~/Library/MobileDevice/Provisioning\ Profiles/
+
+      - name: Export IPA
+        run: |
+          cd xcode-project/Unity-iPhone
+
+          # Create ExportOptions.plist
+          cat > ExportOptions.plist << 'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>development</string>
+            <key>teamID</key>
+            <string>WB5752S5M6</string>
+            <key>signingStyle</key>
+            <string>manual</string>
+            <key>stripSwiftSymbols</key>
+            <true/>
+            <key>uploadSymbols</key>
+            <false/>
+            <key>compileBitcode</key>
+            <false/>
+          </dict>
+          </plist>
+          EOF
+
+          # Build and export
+          xcodebuild -workspace Unity-iPhone.xcworkspace \
+            -scheme Unity-iPhone \
+            -sdk iphoneos \
+            -configuration Release \
+            -archivePath $RUNNER_TEMP/RACCOIN.xcarchive \
+            DEVELOPMENT_TEAM=${{ env.TEAM_ID }} \
+            CODE_SIGN_STYLE=Manual \
+            archive
+
+          xcodebuild -exportArchive \
+            -archivePath $RUNNER_TEMP/RACCOIN.xcarchive \
+            -exportOptionsPlist ExportOptions.plist \
+            -exportPath $RUNNER_TEMP/export
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: RACCOIN-iOS-IPA
+          path: ${{ runner.temp }}/export/*.ipa
+          retention-days: 30
+
+  # ============================================
+  # Job 4: 创建 Release (仅 tag 推送时)
+  # ============================================
+  release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: sign-and-export
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Download IPA
+        uses: actions/download-artifact@v4
+        with:
+          name: RACCOIN-iOS-IPA
+          path: release/
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/*.ipa
+          generate_release_notes: true
