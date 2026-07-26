@@ -129,8 +129,12 @@ public static class SceneBuilder
         coin.GetComponent<MeshRenderer>().sharedMaterial =
             CreateMaterial("CoinGold", new Color(1f, 0.82f, 0.25f), 0.85f, 0.55f);
 
-        var col = coin.GetComponent<MeshCollider>();
+        // Cylinder 图元默认带 CapsuleCollider, 移除并换成凸 MeshCollider (更贴合硬币圆盘形状)
+        var capsule = coin.GetComponent<CapsuleCollider>();
+        if (capsule != null) Object.DestroyImmediate(capsule);
+        var col = coin.AddComponent<MeshCollider>();
         col.convex = true;
+        col.sharedMesh = coin.GetComponent<MeshFilter>().sharedMesh;
         var phys = new PhysicsMaterial("CoinPhys")
         {
             dynamicFriction = 0.15f,
