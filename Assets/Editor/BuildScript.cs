@@ -2,7 +2,6 @@ using UnityEngine;
 using UnityEditor;
 using UnityEditor.Build.Reporting;
 using UnityEditor.Callbacks;
-using UnityEditor.iOS.Xcode;
 using System.IO;
 using System.Linq;
 
@@ -140,16 +139,38 @@ public static class BuildScript
         if (target != BuildTarget.iOS) return;
 
         // 移除 Game Center 能力 (避免签名问题)
-        string projPath = PBXProject.GetPBXProjectPath(path);
-        PBXProject proj = new PBXProject();
-        proj.ReadFromString(File.ReadAllText(projPath));
+        string projPath = Path.Combine(path, "Unity-iPhone.xcodeproj", "project.pbxproj");
+        if (File.Exists(projPath))
+        {
+            string content = File.ReadAllText(projPath);
+            // 移除 GameKit 框架和 Game Center 系统能力引用
+            var lines = content.Split('\n').ToList();
+            lines.RemoveAll(l => l.Contains("GameKit.framework") || l.Contains("com.apple.GameCenter"));
+            File.WriteAllText(projPath, string.Join("\n", lines));
+            Debug.Log("[BuildScript] Removed Game Center references from Xcode project");
+        }
 
-        string mainTarget = proj.GetUnityMainTargetGuid();
-        proj.RemoveCapability(mainTarget, "com.apple.GameCenter");
-        proj.RemoveCapability(mainTarget, "com.apple.InAppPurchase");
-
-        File.WriteAllText(projPath, proj.WriteToString());
-        Debug.Log("[BuildScript] Removed Game Center capability from Xcode project");
+        // 清理 entitlements 文件中的 Game Center 条目
+        string entPath = Path.Combine(path, "Unity-iPhone.entitlements");
+        if (File.Exists(entPath))
+        {
+            string ent = File.ReadAllText(entPath);
+            if (ent.Contains("com.apple.developer.game-center"))
+            {
+                var entLines = ent.Split('\n').ToList();
+                for (int i = entLines.Count - 1; i >= 0; i--)
+                {
+                    if (entLines[i].Contains("com.apple.developer.game-center"))
+                    {
+                        // 移除 key 和 value 行
+                        if (i + 1 < entLines.Count) entLines.RemoveAt(i + 1);
+                        entLines.RemoveAt(i);
+                    }
+                }
+                File.WriteAllText(entPath, string.Join("\n", entLines));
+                Debug.Log("[BuildScript] Removed Game Center from entitlements");
+            }
+        }
     }
 }
 
