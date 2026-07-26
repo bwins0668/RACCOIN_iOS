@@ -46,7 +46,7 @@ public static class BuildScript
         PlayerSettings.SetScriptingBackend(BuildTargetGroup.iOS, ScriptingImplementation.IL2CPP);
         PlayerSettings.iOS.appleEnableAutomaticSigning = false;
         PlayerSettings.iOS.appleDeveloperTeamID = "WB5752S5M6";
-        PlayerSettings.applicationIdentifier = "com.doraccoon.raccoin";
+        PlayerSettings.applicationIdentifier = "com.B5xPo.9xnOT";
         PlayerSettings.productName = "RACCOIN";
         PlayerSettings.bundleVersion = "1.0.0";
         PlayerSettings.iOS.buildNumber = "1";
