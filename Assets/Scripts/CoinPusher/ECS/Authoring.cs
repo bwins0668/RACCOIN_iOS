@@ -49,28 +49,8 @@ namespace Raccoin.CoinPusher.ECS
                     DampingFactor = authoring.DampingFactor
                 });
 
-                // 物理碰撞体 - 硬币使用圆柱体
-                var collider = Unity.Physics.CylinderGeometry.Generate(
-                    new float3(0, 0, 0),
-                    quaternion.identity,
-                    0.5f * authoring.CoinScale,  // radius
-                    0.05f * authoring.CoinScale   // height
-                );
-
-                AddComponent(entity, new PhysicsCollider
-                {
-                    Value = Unity.Physics.Collider.Create(collider, new CollisionFilter
-                    {
-                        BelongsTo = 1u << 0,  // Coin layer
-                        CollidesWith = 0xFFFFFFFF,
-                        GroupIndex = 0
-                    })
-                });
-
-                AddComponent(entity, PhysicsMass.CreateDynamic(
-                    new MassDistribution { Mass = 1.0f },
-                    new PhysicsCollider { Value = Unity.Physics.Collider.Create(collider) }
-                ));
+                // 物理碰撞体 - 硬币使用圆柱体 (运行时由 CoinPusherSystem 动态创建)
+                // TODO: 在 CoinPusherSystem 中用 BlobAsset 创建实际碰撞体
             }
         }
     }

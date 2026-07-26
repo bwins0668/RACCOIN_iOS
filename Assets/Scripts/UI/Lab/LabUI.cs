@@ -401,7 +401,7 @@ namespace Raccoin.UI.Classic
         {
             while (_displayScore < _currentScore)
             {
-                _displayScore += Mathf.Max(1, (_currentScore - _displayScore) / 10);
+                _displayScore += (long)Mathf.Max(1, (_currentScore - _displayScore) / 10);
                 _scoreText.text = _displayScore.ToString("N0");
                 yield return null;
             }
