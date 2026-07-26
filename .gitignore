@@ -80,3 +80,10 @@ Thumbs.db
 *.canvas.tsx
 *.canvas.status.json
 *.canvas.data.json
+
+# Local debug/temp artifacts (not part of the build)
+build_log.txt
+device_log.txt
+orig_scenes.txt
+crash_logs/
+ipa_new/

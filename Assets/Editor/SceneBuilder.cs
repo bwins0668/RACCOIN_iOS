@@ -6,6 +6,7 @@ using UnityEngine.SceneManagement;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem.UI;
 using System.IO;
+using System.Linq;
 using Raccoin.CoinPusher;
 using Raccoin.Core;
 using Raccoin.UI;
@@ -22,6 +23,8 @@ public static class SceneBuilder
     private const string FontDir = "Assets/Resources/Fonts";
     private const string MatDir = "Assets/Resources/Materials";
     private const string PrefabDir = "Assets/Resources/Prefabs";
+    private const string ModelDir = "Assets/Resources/Models";
+    private const string TexDir = "Assets/Resources/Textures";
 
     // ===================== 主入口 =====================
 
@@ -121,32 +124,40 @@ public static class SceneBuilder
     {
         string prefabPath = $"{PrefabDir}/Coin.prefab";
 
-        var coin = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+        // 原版硬币网格 (UnityPy 从原版 resources.assets 提取, 已是 Unity 单位: 半径~0.375 厚~0.12, 带 UV)
+        Mesh coinMesh = LoadModelMesh("SM_Coin");
+
+        GameObject coin;
+        if (coinMesh != null)
+        {
+            coin = new GameObject("Coin");
+            coin.AddComponent<MeshFilter>().sharedMesh = coinMesh;
+            coin.AddComponent<MeshRenderer>().sharedMaterial = CreateCoinMaterial();
+
+            // 凸 MeshCollider (与原版一致 m_Convex=True)。
+            // 注意: 必须使用导入的网格资产, 不能用内置图元(Cylinder)网格——
+            // 后者在 iOS 真机 PreloadManager 线程 cook 时会崩溃 (EXC_BREAKPOINT)。
+            var col = coin.AddComponent<MeshCollider>();
+            col.convex = true;
+            col.sharedMesh = coinMesh;
+            col.sharedMaterial = GetCoinPhysMaterial();
+        }
+        else
+        {
+            // 回退: 网格缺失时用 Cube+BoxCollider, 保证绝不因物理 cook 崩溃
+            Debug.LogError("[SceneBuilder] SM_Coin mesh missing! Falling back to box coin.");
+            coin = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            coin.transform.localScale = new Vector3(0.7f, 0.12f, 0.7f);
+            coin.GetComponent<MeshRenderer>().sharedMaterial =
+                CreateMaterial("CoinGold", new Color(1f, 0.82f, 0.25f), 0.85f, 0.55f);
+            coin.GetComponent<BoxCollider>().sharedMaterial = GetCoinPhysMaterial();
+        }
+
         coin.name = "Coin";
         coin.tag = "Coin";
-        coin.transform.localScale = new Vector3(0.7f, 0.05f, 0.7f); // 半径0.35 厚0.1
-
-        coin.GetComponent<MeshRenderer>().sharedMaterial =
-            CreateMaterial("CoinGold", new Color(1f, 0.82f, 0.25f), 0.85f, 0.55f);
-
-        // Cylinder 图元默认带 CapsuleCollider, 移除并换成凸 MeshCollider (更贴合硬币圆盘形状)
-        var capsule = coin.GetComponent<CapsuleCollider>();
-        if (capsule != null) Object.DestroyImmediate(capsule);
-        var col = coin.AddComponent<MeshCollider>();
-        col.convex = true;
-        col.sharedMesh = coin.GetComponent<MeshFilter>().sharedMesh;
-        var phys = new PhysicsMaterial("CoinPhys")
-        {
-            dynamicFriction = 0.15f,
-            staticFriction = 0.15f,
-            bounciness = 0.05f,
-            frictionCombine = PhysicsMaterialCombine.Average,
-            bounceCombine = PhysicsMaterialCombine.Average
-        };
-        col.sharedMaterial = phys;
 
         var rb = coin.AddComponent<Rigidbody>();
-        rb.mass = 0.3f;
+        rb.mass = 1.0f; // 与原版一致
         rb.linearDamping = 0.05f;
         rb.angularDamping = 0.5f;
         rb.useGravity = true;
@@ -156,6 +167,58 @@ public static class SceneBuilder
         Object.DestroyImmediate(coin);
         Debug.Log($"[SceneBuilder] Coin prefab created: {prefabPath}");
         return prefab;
+    }
+
+    /// <summary>从 .obj 模型加载网格 (UnityPy 提取的原版网格)</summary>
+    private static Mesh LoadModelMesh(string name)
+    {
+        string path = $"{ModelDir}/{name}.obj";
+        if (!File.Exists(path))
+        {
+            Debug.LogError($"[SceneBuilder] Model not found: {path}");
+            return null;
+        }
+        var assets = AssetDatabase.LoadAllAssetsAtPath(path);
+        if (assets == null || assets.Length == 0)
+        {
+            AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceUpdate);
+            assets = AssetDatabase.LoadAllAssetsAtPath(path);
+        }
+        return assets == null ? null : assets.OfType<Mesh>().FirstOrDefault(m => m != null);
+    }
+
+    /// <summary>硬币材质: Standard + 原版硬币贴图 (T_Coin_2008)</summary>
+    private static Material CreateCoinMaterial()
+    {
+        string path = $"{MatDir}/CoinOriginal.mat";
+        var existing = AssetDatabase.LoadAssetAtPath<Material>(path);
+        if (existing != null) return existing;
+        var mat = new Material(Shader.Find("Standard"));
+        var tex = AssetDatabase.LoadAssetAtPath<Texture2D>($"{TexDir}/T_Coin_2008.png");
+        if (tex != null) mat.mainTexture = tex;
+        else mat.color = new Color(1f, 0.82f, 0.25f);
+        mat.SetFloat("_Metallic", 0.6f);
+        mat.SetFloat("_Glossiness", 0.5f);
+        AssetDatabase.CreateAsset(mat, path);
+        return mat;
+    }
+
+    /// <summary>硬币物理材质 (保存为资产, 避免未保存对象嵌入预制体导致加载问题)</summary>
+    private static PhysicsMaterial GetCoinPhysMaterial()
+    {
+        string path = $"{MatDir}/CoinPhys.physicMaterial";
+        var existing = AssetDatabase.LoadAssetAtPath<PhysicsMaterial>(path);
+        if (existing != null) return existing;
+        var phys = new PhysicsMaterial("CoinPhys")
+        {
+            dynamicFriction = 0.15f,
+            staticFriction = 0.15f,
+            bounciness = 0.05f,
+            frictionCombine = PhysicsMaterialCombine.Average,
+            bounceCombine = PhysicsMaterialCombine.Average
+        };
+        AssetDatabase.CreateAsset(phys, path);
+        return phys;
     }
 
     // ===================== Init 场景 =====================
@@ -183,21 +246,31 @@ public static class SceneBuilder
         var canvas = CreateCanvas("TitleCanvas");
         CreateEventSystem();
 
-        // 背景 (全屏拉伸)
+        // 背景 (全屏拉伸) - 原版六边形图案背景 (UI_BG, 640x360 横屏)
         var bg = CreateUI("Background", canvas.transform, new Vector2(0, 0), new Vector2(1, 1), Vector2.zero, Vector2.zero);
         var bgImg = bg.gameObject.AddComponent<Image>();
-        var bgSprite = LoadSprite("UI_BG_2");
-        if (bgSprite != null) { bgImg.sprite = bgSprite; bgImg.type = Image.Type.Simple; }
-        bgImg.color = new Color(0.10f, 0.12f, 0.25f);
+        var bgSprite = LoadSprite("UI_BG");
+        if (bgSprite == null) bgSprite = LoadSprite("UI_BG_2");
+        if (bgSprite != null) { bgImg.sprite = bgSprite; bgImg.type = Image.Type.Simple; bgImg.color = Color.white; }
+        else bgImg.color = new Color(0.10f, 0.12f, 0.25f);
 
-        // LOGO
-        var logo = CreateUI("Logo", canvas.transform, new Vector2(0, 0), new Vector2(1, 1), new Vector2(0, 180), Vector2.zero);
-        var logoText = AddText(logo, "RACCOIN", font, 140, new Color(1f, 0.84f, 0.2f), TextAnchor.MiddleCenter);
+        // LOGO (加描边+阴影, 更接近原版立体质感)
+        var logo = CreateUI("Logo", canvas.transform, new Vector2(0, 0), new Vector2(1, 1), new Vector2(0, 190), Vector2.zero);
+        var logoText = AddText(logo, "RACCOIN", font, 150, new Color(1f, 0.84f, 0.2f), TextAnchor.MiddleCenter);
         logoText.fontStyle = FontStyle.Bold;
+        var logoOutline = logo.gameObject.AddComponent<Outline>();
+        logoOutline.effectColor = new Color(0.45f, 0.28f, 0.05f);
+        logoOutline.effectDistance = new Vector2(4, -4);
+        var logoShadow = logo.gameObject.AddComponent<Shadow>();
+        logoShadow.effectColor = new Color(0, 0, 0, 0.6f);
+        logoShadow.effectDistance = new Vector2(6, -6);
 
         // 副标题
-        var sub = CreateUI("Subtitle", canvas.transform, new Vector2(0, 0), new Vector2(1, 1), new Vector2(0, 70), Vector2.zero);
-        AddText(sub, "浣 熊 推 币 机", font, 44, Color.white, TextAnchor.MiddleCenter);
+        var sub = CreateUI("Subtitle", canvas.transform, new Vector2(0, 0), new Vector2(1, 1), new Vector2(0, 75), Vector2.zero);
+        AddText(sub, "浣 熊 推 币 机", font, 46, Color.white, TextAnchor.MiddleCenter);
+        var subShadow = sub.gameObject.AddComponent<Shadow>();
+        subShadow.effectColor = new Color(0, 0, 0, 0.8f);
+        subShadow.effectDistance = new Vector2(3, -3);
 
         // 按钮
         var controllerGo = new GameObject("TitleScreenController");
@@ -331,14 +404,17 @@ public static class SceneBuilder
         var scoreRt = CreateUI("ScoreText", topBar,
             new Vector2(0, 0), new Vector2(0.4f, 1), Vector2.zero, Vector2.zero);
         var scoreText = AddText(scoreRt, "000000", font, 52, new Color(1f, 0.9f, 0.3f), TextAnchor.MiddleCenter);
+        AddShadow(scoreRt);
 
         var roundRt = CreateUI("RoundText", topBar,
             new Vector2(0.4f, 0), new Vector2(0.6f, 1), Vector2.zero, Vector2.zero);
         var roundText = AddText(roundRt, "ROUND 1", font, 40, Color.white, TextAnchor.MiddleCenter);
+        AddShadow(roundRt);
 
         var coinRt = CreateUI("CoinCountText", topBar,
             new Vector2(0.6f, 0), new Vector2(1, 1), Vector2.zero, Vector2.zero);
         var coinText = AddText(coinRt, "100", font, 52, new Color(0.4f, 1f, 0.6f), TextAnchor.MiddleCenter);
+        AddShadow(coinRt);
 
         var backBtn = CreateButton("BackButton", canvas.transform, font, "< 返回",
             new Vector2(30, -30), new Vector2(160, 70),
@@ -468,6 +544,14 @@ public static class SceneBuilder
         return text;
     }
 
+    /// <summary>给文本加黑色阴影 (提升在复杂背景上的可读性)</summary>
+    private static void AddShadow(RectTransform rt)
+    {
+        var shadow = rt.gameObject.AddComponent<Shadow>();
+        shadow.effectColor = new Color(0, 0, 0, 0.75f);
+        shadow.effectDistance = new Vector2(2, -2);
+    }
+
     /// <summary>创建带按钮 (默认居中锚点, 可自定义)</summary>
     private static Button CreateButton(string name, Transform parent, Font font, string label,
         Vector2 anchoredPos, Vector2 size, Vector2? anchorMin = null, Vector2? anchorMax = null)
@@ -486,6 +570,8 @@ public static class SceneBuilder
         btn.targetGraphic = img;
         if (highlighted != null && pressed != null)
         {
+            // 必须切换到 SpriteSwap 模式, spriteState 才会生效 (默认 ColorTint 会忽略 spriteState)
+            btn.transition = Selectable.Transition.SpriteSwap;
             var state = new SpriteState
             {
                 highlightedSprite = highlighted,
