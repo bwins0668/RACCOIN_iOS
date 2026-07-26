@@ -52,7 +52,6 @@ public static class BuildScript
 
         // IL2CPP 优化
         PlayerSettings.SetIl2CppCompilerConfiguration(BuildTargetGroup.iOS, Il2CppCompilerConfiguration.Release);
-        PlayerSettings.SetIl2CppCodeGeneration(BuildTargetGroup.iOS, Il2CppCodeGeneration.OptimizeSpeed);
 
         Debug.Log("[BuildScript] Starting iOS build...");
         BuildReport report = BuildPipeline.BuildPlayer(buildPlayerOptions);
