@@ -18,6 +18,7 @@ on:
         options:
           - development
           - release
+          - activate
 
 env:
   UNITY_VERSION: "6000.3.0f1"
@@ -52,6 +53,7 @@ jobs:
     name: Run EditMode Tests
     runs-on: ubuntu-latest
     continue-on-error: true
+    if: github.event_name != 'workflow_dispatch' || github.event.inputs.build_type != 'activate'
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -96,6 +98,7 @@ jobs:
   build-ios:
     name: Build iOS Xcode Project
     runs-on: ubuntu-latest
+    if: github.event_name != 'workflow_dispatch' || github.event.inputs.build_type != 'activate'
     strategy:
       fail-fast: false
     steps:
