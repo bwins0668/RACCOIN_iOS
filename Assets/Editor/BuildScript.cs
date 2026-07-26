@@ -56,9 +56,7 @@ public static class BuildScript
         PlayerSettings.iOS.sdkVersion = iOSSdkVersion.DeviceSDK;
         PlayerSettings.iOS.targetOSVersionString = "15.0";
         PlayerSettings.SetScriptingBackend(BuildTargetGroup.iOS, ScriptingImplementation.IL2CPP);
-        // 同时启用新旧输入系统: InputManager.cs 的 EnhancedTouch(触摸投币) 和
-        // EventSystem 的 InputSystemUIInputModule(按钮响应) 都依赖新输入系统
-        PlayerSettings.activeInputHandler = ActiveInputHandler.Both;
+        // 输入系统设置(新输入系统=Both)已在 ProjectSettings.asset 中通过 activeInputHandler: 2 配置
         PlayerSettings.iOS.appleEnableAutomaticSigning = false;
         PlayerSettings.iOS.appleDeveloperTeamID = "WB5752S5M6";
         PlayerSettings.applicationIdentifier = "com.B5xPo.9xnOT";

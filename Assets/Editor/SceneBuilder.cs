@@ -131,20 +131,20 @@ public static class SceneBuilder
 
         var col = coin.GetComponent<MeshCollider>();
         col.convex = true;
-        var phys = new PhysicMaterial("CoinPhys")
+        var phys = new PhysicsMaterial("CoinPhys")
         {
             dynamicFriction = 0.15f,
             staticFriction = 0.15f,
             bounciness = 0.05f,
-            frictionCombine = PhysicMaterialCombine.Average,
-            bounceCombine = PhysicMaterialCombine.Average
+            frictionCombine = PhysicsMaterialCombine.Average,
+            bounceCombine = PhysicsMaterialCombine.Average
         };
-        col.material = phys;
+        col.sharedMaterial = phys;
 
         var rb = coin.AddComponent<Rigidbody>();
         rb.mass = 0.3f;
-        rb.drag = 0.05f;
-        rb.angularDrag = 0.5f;
+        rb.linearDamping = 0.05f;
+        rb.angularDamping = 0.5f;
         rb.useGravity = true;
         rb.collisionDetectionMode = CollisionDetectionMode.Discrete;
 
