@@ -1,6 +1,8 @@
 using UnityEngine;
 using UnityEditor;
 using UnityEditor.Build.Reporting;
+using UnityEditor.Callbacks;
+using UnityEditor.iOS.Xcode;
 using System.IO;
 using System.Linq;
 
@@ -127,6 +129,27 @@ public static class BuildScript
             }
         }
         return null;
+    }
+
+    /// <summary>
+    /// 构建后处理 - 移除不需要的 Xcode 功能
+    /// </summary>
+    [PostProcessBuild(999)]
+    public static void OnPostProcessBuild(BuildTarget target, string path)
+    {
+        if (target != BuildTarget.iOS) return;
+
+        // 移除 Game Center 能力 (避免签名问题)
+        string projPath = PBXProject.GetPBXProjectPath(path);
+        PBXProject proj = new PBXProject();
+        proj.ReadFromString(File.ReadAllText(projPath));
+
+        string mainTarget = proj.GetUnityMainTargetGuid();
+        proj.RemoveCapability(mainTarget, "com.apple.GameCenter");
+        proj.RemoveCapability(mainTarget, "com.apple.InAppPurchase");
+
+        File.WriteAllText(projPath, proj.WriteToString());
+        Debug.Log("[BuildScript] Removed Game Center capability from Xcode project");
     }
 }
 
